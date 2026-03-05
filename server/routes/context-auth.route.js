@@ -69,6 +69,6 @@ router.get("/verify", verifyEmailValidation, verifyEmail, addContextData);
 router.get("/verify-login", verifyLoginValidation, verifyLogin);
 router.get("/block-login", verifyLoginValidation, blockLogin);
 
-router.post("/forgot-password", forgotpassword);
+router.post("/forgot-password", forgotPassword);
 router.post("/reset-password/:token", resetPassword);
 module.exports = router;
