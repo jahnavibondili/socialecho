@@ -17,9 +17,11 @@ const contextAuthRoutes = require("./routes/context-auth.route");
 const search = require("./controllers/search.controller");
 const Database = require("./config/database");
 const decodeToken = require("./middlewares/auth/decodeToken");
-
+const requestIp = require("request-ip");
+const useragent = require("express-useragent");
 const app = express();
-
+app.use(requestIp.mw());
+app.use(useragent.express());
 const cors = require("cors");
 const morgan = require("morgan");
 const passport = require("passport");

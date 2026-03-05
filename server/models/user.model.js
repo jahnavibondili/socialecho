@@ -17,6 +17,25 @@ const userSchema = new Schema(
       type: String,
       required: true,
     },
+    resetPasswordToken: {
+      type: String,
+    },
+    resetPasswordExpire: {
+      type: String,
+    },
+    lastLoginIP: {
+      type: String,
+      default: null
+    },
+    lastLoginDevice: {
+      type: String,
+      default: null
+    },
+    securityLevel: {
+      type: String,
+      enum: ["low", "medium", "high"],
+      default: "low"
+    },
     avatar: {
       type: String,
     },

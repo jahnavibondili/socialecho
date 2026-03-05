@@ -26,7 +26,10 @@ const {
   addUserValidatorHandler,
 } = require("../middlewares/users/usersValidator");
 
-const { sendVerificationEmail } = require("../middlewares/users/verifyEmail");
+const {
+  sendVerificationEmail,
+  resendVerificationEmail,
+} = require("../middlewares/users/verifyEmail");
 const {
   sendLoginVerificationEmail,
 } = require("../middlewares/users/verifyLogin");
@@ -54,6 +57,11 @@ router.post(
   addUserValidatorHandler,
   addUser,
   sendVerificationEmail
+);
+router.post(
+  "/resend-verification",
+  signUpSignInLimiter,
+  resendVerificationEmail
 );
 router.post("/refresh-token", refreshToken);
 router.post(

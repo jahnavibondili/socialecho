@@ -16,7 +16,7 @@ const Post = ({ post }) => {
   const location = useLocation();
   const userData = useSelector((state) => state.auth?.userData);
 
-  const { content, fileUrl, fileType, user, community, createdAt, comments } =
+  const { content, fileUrl, fileType, user, community, createdAt, comments, category } =
     post;
 
   const [showModal, setShowModal] = useState(false);
@@ -57,17 +57,24 @@ const Post = ({ post }) => {
         </div>
         <p className="text-sm text-gray-500">{createdAt}</p>
       </div>
-      <div>
+      <div className="my-2">
+
+        {category && (
+          <span className="inline-block bg-blue-100 text-blue-700 text-xs font-semibold px-3 py-1 rounded-full mb-2">
+            {category}
+          </span>
+        )}
         <p
           onClick={() => {
             navigate(`/post/${post._id}`, {
               state: { from: location.pathname },
             });
           }}
-          className="my-2 cursor-pointer break-words"
+          className="cursor-pointer break-words"
         >
           {content}
         </p>
+      </div>
         <div className="mt-4">
           {fileUrl && fileType === "image" ? (
             <PhotoProvider
@@ -102,7 +109,7 @@ const Post = ({ post }) => {
             )
           )}
         </div>
-      </div>
+      
       <div className="flex items-center justify-between mt-4">
         <div className="flex items-center gap-4">
           <Like post={post} />

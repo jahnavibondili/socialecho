@@ -11,6 +11,11 @@ const postSchema = new Schema(
       type: String,
       trim: true,
     },
+    category: {
+      type: String,
+      trim: true,
+      default: null
+    },
     fileUrl: {
       type: String,
       trim: true,

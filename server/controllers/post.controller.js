@@ -1,3 +1,4 @@
+const axios = require("axios");
 const dayjs = require("dayjs");
 const relativeTime = require("dayjs/plugin/relativeTime");
 dayjs.extend(relativeTime);
@@ -23,43 +24,35 @@ const createPost = async (req, res) => {
     });
 
     if (!community) {
-      if (file) {
-        const filePath = `./assets/userFiles/${file.filename}`;
-        fs.unlink(filePath, (err) => {
-          if (err) {
-            console.error(err);
-          }
-        });
-      }
-
-      return res.status(401).json({
-        message: "Unauthorized to post in this community",
-      });
+      return res.status(403).json({ message: "Not a member of this community" });
     }
 
-    const newPost = new Post({
-      user: userId,
-      community: communityId,
+    // 🔥 Call Flask AI classifier
+    const aiResponse = await axios.post(
+      "http://127.0.0.1:5000/classify",
+      { text: content }
+    );
+
+    const categories = aiResponse.data.response.categories;
+    const topCategory = categories[0].label;
+
+    console.log("AI Category:", topCategory);
+
+    // ✅ Create post with category
+    const newPost = await Post.create({
+      communityId,
       content,
-      fileUrl: fileUrl ? fileUrl : null,
-      fileType: fileType ? fileType : null,
+      category: topCategory,
+      userId,
+      fileUrl,
+      fileType,
     });
 
-    const savedPost = await newPost.save();
-    const postId = savedPost._id;
+    res.status(201).json(newPost);
 
-    const post = await Post.findById(postId)
-      .populate("user", "name avatar")
-      .populate("community", "name")
-      .lean();
-
-    post.createdAt = dayjs(post.createdAt).fromNow();
-
-    res.json(post);
   } catch (error) {
-    res.status(500).json({
-      message: "Error creating post",
-    });
+    console.error("Create Post Error:", error);
+    res.status(500).json({ message: "Post creation failed" });
   }
 };
 

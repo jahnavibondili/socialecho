@@ -1,9 +1,21 @@
 from flask import Flask, request, jsonify
-from transformers import pipeline
-import threading
+import requests
+import os
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 app = Flask(__name__)
 
+# Get HuggingFace API Key
+HF_API_KEY = os.getenv("INTERFACE_API_KEY")
+print("HF KEY:", HF_API_KEY)
+
+# HuggingFace Router Endpoint
+HF_API_URL = "https://router.huggingface.co/hf-inference/models/facebook/bart-large-mnli"
+
+# Candidate labels
 CANDIDATE_LABELS = [
     'programming',
     'health_and_fitness',
@@ -25,39 +37,18 @@ CANDIDATE_LABELS = [
     'literature',
 ]
 
-classifier_lock = threading.Lock()
-classifier = None
-
-
-def initialize_classifier():
-    global classifier
-    try:
-        classifier = pipeline(
-            "zero-shot-classification",
-            model="facebook/bart-large-mnli",
-            framework="pt",
-            batch_size=4,
-        )
-        print("Classifier initialized successfully")
-    except Exception as e:
-        print(f"Classifier initialization failed: {e}")
-
-
-def get_classifier():
-    global classifier
-    if classifier is None:
-        with classifier_lock:
-            if classifier is None:
-                initialize_classifier()
-    return classifier
-
+# Headers
+headers = {
+    "Authorization": f"Bearer {HF_API_KEY}",
+    "Content-Type": "application/json"
+}
 
 @app.route('/', methods=['GET'])
 def index():
     return jsonify({
         "response": {
             "status": 200,
-            "statusText": "OK"
+            "statusText": "Classifier API Running"
         }
     })
 
@@ -65,43 +56,54 @@ def index():
 @app.route('/classify', methods=['POST'])
 def classify():
     try:
-        data = request.json
+        # Safely get JSON
+        data = request.get_json()
 
-        if 'text' not in data or data['text'] == "":
+        if not data:
+            raise ValueError("JSON body missing")
+
+        if 'text' not in data or data['text'].strip() == "":
             raise ValueError("Text is required")
 
         text = data['text']
 
-        classifier = get_classifier()
-        result = classifier(text, CANDIDATE_LABELS)
-
-        labels = result['labels']
-        scores = result['scores']
-
-        returnData = {
-            "response": {
-                "statusText": "OK",
-                "status": 200,
-                "categories": []
+        # Prepare payload
+        payload = {
+            "inputs": text,
+            "parameters": {
+                "candidate_labels": CANDIDATE_LABELS
             }
         }
 
-        for label, score in zip(labels, scores):
-            category = {
-                "label": label.capitalize().replace("_", " "),
-                "score": score
-            }
+        # Send request to HuggingFace
+        response = requests.post(HF_API_URL, headers=headers, json=payload)
+        result = response.json()
 
-            returnData["response"]["categories"].append(category)
+        print("HF RESULT:", result)
+        print("TYPE:", type(result))
 
-        formattedReturnData = {
+        # HuggingFace router returns list of {label, score}
+        if not isinstance(result, list):
+            raise ValueError(f"Unexpected response format: {result}")
+
+        categories = []
+
+        for item in result:
+            categories.append({
+                "label": item["label"].capitalize().replace("_", " "),
+                "score": item["score"]
+            })
+
+        # Sort by highest score
+        categories_sorted = sorted(categories, key=lambda x: x["score"], reverse=True)
+
+        return jsonify({
             "response": {
-                "categories": sorted(returnData["response"]["categories"], key=lambda x: x["score"], reverse=True)
+                "categories": categories_sorted
             }
-        }
-
-        return jsonify(formattedReturnData)
+        })
     except Exception as e:
+        print("ERROR:", str(e))
         return jsonify({
             "response": {
                 "status": 500,
@@ -111,5 +113,5 @@ def classify():
 
 
 if __name__ == '__main__':
-    initialize_classifier()
+
     app.run(host='0.0.0.0', port=5000, debug=True)
