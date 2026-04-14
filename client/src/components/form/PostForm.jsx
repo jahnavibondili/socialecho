@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import {
@@ -19,7 +20,7 @@ const PostForm = ({ communityId, communityName }) => {
   ] = useState(false);
 
   const [formData, setFormData] = useState({
-    content: "",
+    content: sessionStorage.getItem("redirectedPostContent") || "",
     file: null,
     error: "",
     loading: false,
@@ -67,45 +68,51 @@ const PostForm = ({ communityId, communityName }) => {
   }, [isPostInappropriate, postCategory, confirmationToken]);
 
   const handleSubmit = async (event) => {
-    event.preventDefault();
-    const { content, file, loading } = formData;
-    if (loading) return;
+  event.preventDefault();
+  const { content, file, loading } = formData;
 
-    if (!content && !file) {
-      setFormData({
-        ...formData,
-        error: "Please enter a message or select a file.",
-      });
-      return;
-    }
+  if (loading) return;
 
-    const newPost = new FormData();
-    newPost.append("content", content);
-    newPost.append("communityId", communityId);
-    newPost.append("communityName", communityName);
-    newPost.append("file", file);
+  if (!content && !file) {
+    setFormData((prev) => ({
+      ...prev,
+      error: "Please enter a message or select a file.",
+    }));
+    return;
+  }
+
+  sessionStorage.setItem("redirectedPostContent", content);
+
+  const newPost = new FormData();
+  newPost.append("content", content);
+  newPost.append("communityId", communityId);
+  newPost.append("communityName", communityName);
+  newPost.append("file", file);
+
+  setFormData((prev) => ({
+    ...prev,
+    loading: true,
+  }));
+
+  try {
+    await dispatch(createPostAction(newPost, communityId));
+
+    sessionStorage.removeItem("redirectedPostContent");
 
     setFormData({
-      ...formData,
-      loading: true,
+      content: "",
+      file: null,
+      error: "",
+      loading: false,
     });
 
-    try {
-      await dispatch(createPostAction(newPost));
-      setFormData({
-        content: "",
-        file: null,
-        error: "",
-        loading: false,
-      });
-      event.target.reset();
-    } catch (error) {
-      setFormData({
-        ...formData,
-        loading: false,
-      });
-    }
-  };
+  } catch (error) {
+    setFormData((prev) => ({
+      ...prev,
+      loading: false,
+    }));
+  }
+};
 
   const handleRemoveFile = () => {
     setFormData({
@@ -134,6 +141,7 @@ const PostForm = ({ communityId, communityName }) => {
         showTopicConflictModal={showTopicConflictModal}
         communityName={postCategory?.community}
         recommendedCommunity={postCategory?.recommendedCommunity}
+        content={formData.content}
       />
 
       <EligibilityDetectionFailModal

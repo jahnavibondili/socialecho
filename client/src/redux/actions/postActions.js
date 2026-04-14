@@ -1,7 +1,7 @@
 import * as api from "../api/postAPI";
 import * as types from "../constants/postConstants";
 
-export const createPostAction = (formData) => async (dispatch) => {
+export const createPostAction = (formData, communityId) => async (dispatch) => {
   try {
     const {
       error = null,
@@ -35,6 +35,7 @@ export const createPostAction = (formData) => async (dispatch) => {
       );
     } else {
       dispatchCreatePostSuccess(dispatch, types.CREATE_POST_SUCCESS, data);
+      dispatch(getComPostsAction(communityId, 10, 0));
     }
   } catch (error) {
     dispatchCreatePostFail(dispatch, types.CREATE_POST_FAIL, error.message);

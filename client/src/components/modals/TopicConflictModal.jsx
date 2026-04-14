@@ -1,14 +1,48 @@
+import { useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 const TopicConflictModal = ({
   communityName,
   closeTopicConflictModal,
   showTopicConflictModal,
   recommendedCommunity,
+  content,
 }) => {
+  const navigate = useNavigate();
+
+  const communityRouteMap = {
+  Music: "Music",
+  Programming: "Programming",
+  Sports: "Sports",
+  Gaming: "Gaming",
+  Education: "Education",
+};
+
   const handleClose = () => {
     if (showTopicConflictModal) {
       closeTopicConflictModal();
     }
   };
+
+  useEffect(() => {
+  if (showTopicConflictModal && recommendedCommunity) {
+    const timer = setTimeout(() => {
+      const targetCommunity =
+        communityRouteMap[recommendedCommunity] || recommendedCommunity;
+      console.log("Topic modal content:", content);
+      sessionStorage.setItem("redirectedPostContent", content);
+
+      navigate(`/community/${encodeURIComponent(targetCommunity)}`, {
+        state: {
+          redirectedContent: content,
+        },
+      });
+
+      closeTopicConflictModal();
+    }, 1000);
+
+    return () => clearTimeout(timer);
+  }
+  }, [showTopicConflictModal, recommendedCommunity, content]);
 
 return (
   <div
