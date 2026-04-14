@@ -1,5 +1,15 @@
 import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+
+// Move outside component for stable reference
+const communityRouteMap = {
+  Music: "Music",
+  Programming: "Programming",
+  Sports: "Sports",
+  Gaming: "Gaming",
+  Education: "Education",
+};
+
 const TopicConflictModal = ({
   communityName,
   closeTopicConflictModal,
@@ -9,14 +19,6 @@ const TopicConflictModal = ({
 }) => {
   const navigate = useNavigate();
 
-  const communityRouteMap = {
-  Music: "Music",
-  Programming: "Programming",
-  Sports: "Sports",
-  Gaming: "Gaming",
-  Education: "Education",
-};
-
   const handleClose = () => {
     if (showTopicConflictModal) {
       closeTopicConflictModal();
@@ -24,53 +26,67 @@ const TopicConflictModal = ({
   };
 
   useEffect(() => {
-  if (showTopicConflictModal && recommendedCommunity) {
-    const timer = setTimeout(() => {
-      const targetCommunity =
-        communityRouteMap[recommendedCommunity] || recommendedCommunity;
-      console.log("Topic modal content:", content);
-      sessionStorage.setItem("redirectedPostContent", content);
+    if (showTopicConflictModal && recommendedCommunity) {
+      const timer = setTimeout(() => {
+        const targetCommunity =
+          communityRouteMap[recommendedCommunity] || recommendedCommunity;
 
-      navigate(`/community/${encodeURIComponent(targetCommunity)}`, {
-        state: {
-          redirectedContent: content,
-        },
-      });
+        console.log("Topic modal content:", content);
+        sessionStorage.setItem("redirectedPostContent", content);
 
-      closeTopicConflictModal();
-    }, 1000);
+        navigate(`/community/${encodeURIComponent(targetCommunity)}`, {
+          state: {
+            redirectedContent: content,
+          },
+        });
 
-    return () => clearTimeout(timer);
-  }
-  }, [showTopicConflictModal, recommendedCommunity, content]);
+        closeTopicConflictModal();
+      }, 1000);
 
-return (
-  <div
-    className={`fixed inset-0 flex items-center justify-center overflow-y-auto transition-opacity duration-300 ${
-      showTopicConflictModal ? "opacity-100 z-50" : "opacity-0 hidden"
-    }`}
-  >
-    <div className="fixed inset-0 bg-gray-900 bg-opacity-50 z-0"></div>
-    <div className="bg-white rounded-lg shadow-lg p-8 w-full md:w-96 relative z-10">
-      <div className="text-center">
-        <h2 className="text-lg font-bold mb-4">Important Message</h2>
-        <hr className="border-t-2 border-gray-300 mb-6" />
-        <p className="text-gray-700 mb-6">
-          Hello! We've noticed that your post in the{" "}
-          <strong className="text-primary">{communityName}</strong> community may not be the best fit for that audience. However, we believe it would be a great fit for the <strong className="text-primary">{recommendedCommunity}</strong> community!
-        </p>
+      return () => clearTimeout(timer);
+    }
+  }, [
+    showTopicConflictModal,
+    recommendedCommunity,
+    content,
+    navigate,
+    closeTopicConflictModal,
+  ]);
 
-        <button
-          className="bg-primary text-sm hover:bg-blue-700 text-white font-semibold py-2 px-6 rounded focus:outline-none focus:shadow-outline transition-colors duration-300"
-          onClick={handleClose}
-        >
-          Got it, thanks!
-        </button>
+  return (
+    <div
+      className={`fixed inset-0 flex items-center justify-center overflow-y-auto transition-opacity duration-300 ${
+        showTopicConflictModal ? "opacity-100 z-50" : "opacity-0 hidden"
+      }`}
+    >
+      <div className="fixed inset-0 bg-gray-900 bg-opacity-50 z-0"></div>
+
+      <div className="bg-white rounded-lg shadow-lg p-8 w-full md:w-96 relative z-10">
+        <div className="text-center">
+          <h2 className="text-lg font-bold mb-4">Important Message</h2>
+          <hr className="border-t-2 border-gray-300 mb-6" />
+
+          <p className="text-gray-700 mb-6">
+            Hello! We've noticed that your post in the{" "}
+            <strong className="text-primary">{communityName}</strong> community
+            may not be the best fit for that audience. However, we believe it
+            would be a great fit for the{" "}
+            <strong className="text-primary">
+              {recommendedCommunity}
+            </strong>{" "}
+            community!
+          </p>
+
+          <button
+            className="bg-primary text-sm hover:bg-blue-700 text-white font-semibold py-2 px-6 rounded focus:outline-none focus:shadow-outline transition-colors duration-300"
+            onClick={handleClose}
+          >
+            Got it, thanks!
+          </button>
+        </div>
       </div>
     </div>
-  </div>
-);
-
+  );
 };
 
 export default TopicConflictModal;
