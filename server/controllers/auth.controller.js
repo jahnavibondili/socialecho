@@ -1,3 +1,4 @@
+const axios = require("axios");
 const UserContext = require("../models/context.model");
 const UserPreference = require("../models/preference.model");
 const SuspiciousLogin = require("../models/suspiciousLogin.model");
@@ -119,9 +120,30 @@ const verifyContextData = async (req, existingUser) => {
 
     const currentContextData = getCurrentContextData(req);
 
-    if (isTrustedDevice(currentContextData, userContextData)) {
-      return types.MATCH;
+    // ---------------- AI CLASSIFIER CALL ----------------
+    let aiRisk = "low";
+
+    try {
+     const response = await axios.post(
+       process.env.CLASSIFIER_API + "/predict-risk",
+       {
+         location: currentContextData.country,
+         device: currentContextData.deviceType,
+         failedAttempts: existingUser.failedAttempts || 0,
+       }
+     );
+
+     aiRisk = response.data.risk;
+    } catch (error) {
+      console.log("Classifier API error:", error.message);
     }
+
+    if (isTrustedDevice(currentContextData, userContextData)) {
+      if (aiRisk === "high") {
+        return types.BLOCKED;
+      }
+       return types.MATCH;
+     }
 
     const oldSuspiciousContextData = await getOldSuspiciousContextData(
       _id,
