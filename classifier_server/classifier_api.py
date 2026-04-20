@@ -108,13 +108,7 @@ def classify():
                 "statusText": str(e)
             }
         })
-@app.route('/classify', methods=['POST'])
-def classify():
-    # your existing code
-    ...
-
-
-# 👇 PASTE HERE (NEW API)
+        
 @app.route('/predict-risk', methods=['POST'])
 def predict_risk():
     data = request.json
@@ -135,5 +129,5 @@ def predict_risk():
     return jsonify({"risk": risk})
 
 if __name__ == '__main__':
-    
+
     app.run(host='0.0.0.0', port=5000, debug=True)
