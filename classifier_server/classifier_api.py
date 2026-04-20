@@ -1,6 +1,4 @@
 from flask import Flask, request, jsonify
-from transformers import pipeline
-import threading
 
 app = Flask(__name__)
 
@@ -108,7 +106,7 @@ def classify():
                 "statusText": str(e)
             }
         })
-        
+
 @app.route('/predict-risk', methods=['POST'])
 def predict_risk():
     data = request.json
@@ -130,4 +128,4 @@ def predict_risk():
 
 if __name__ == '__main__':
 
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    app.run(host='0.0.0.0', port=5000)
