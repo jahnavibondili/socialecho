@@ -287,6 +287,10 @@ const verifyContextData = async (req, existingUser) => {
       };
     }
 
+    if (aiRisk === "high") {
+      return types.BLOCKED;
+    }
+
     return types.MATCH;
   } catch (error) {
     return types.ERROR;

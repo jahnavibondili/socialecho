@@ -1,5 +1,7 @@
 const bcrypt = require("bcrypt");
 const User = require("../models/user.model");
+const crypto = require("crypto");
+const nodemailer = require("nodemailer");
 const jwt = require("jsonwebtoken");
 const Token = require("../models/token.model");
 const Post = require("../models/post.model");
@@ -352,6 +354,69 @@ const logout = async (req, res) => {
   }
 };
 
+const forgotPassword = async (req, res) => {
+  try {
+    const user = await User.findOne({ email: req.body.email });
+
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    const token = crypto.randomBytes(32).toString("hex");
+
+    user.resetToken = token;
+    user.resetTokenExpiry = Date.now() + 3600000;
+
+    await user.save();
+
+    const transporter = nodemailer.createTransport({
+      service: "gmail",
+      auth: {
+        user: process.env.EMAIL,
+        pass: process.env.PASSWORD,
+      },
+    });
+
+    const resetLink = `${process.env.CLIENT_URL}/reset-password/${token}`;
+
+    await transporter.sendMail({
+      to: user.email,
+      subject: "Password Reset",
+      html: `<p>Click below to reset password:</p>
+             <a href="${resetLink}">${resetLink}</a>`,
+    });
+
+    res.json({ message: "Reset link sent" });
+
+  } catch (error) {
+    res.status(500).json({ message: "Error sending email" });
+  }
+};
+
+const resetPassword = async (req, res) => {
+  try {
+    const user = await User.findOne({
+      resetToken: req.params.token,
+      resetTokenExpiry: { $gt: Date.now() },
+    });
+
+    if (!user) {
+      return res.status(400).json({ message: "Invalid or expired token" });
+    }
+
+    user.password = req.body.password;
+    user.resetToken = undefined;
+    user.resetTokenExpiry = undefined;
+
+    await user.save();
+
+    res.json({ message: "Password reset successful" });
+
+  } catch (error) {
+    res.status(500).json({ message: "Error resetting password" });
+  }
+};
+
 const refreshToken = async (req, res) => {
   try {
     const { refreshToken } = req.body;
@@ -463,6 +528,8 @@ module.exports = {
   addUser,
   signin,
   logout,
+  forgotPassword,
+  resetPassword,
   refreshToken,
   getModProfile,
   getUser,
