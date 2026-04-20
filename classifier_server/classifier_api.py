@@ -23,7 +23,7 @@ CANDIDATE_LABELS = [
     'literature',
 ]
 
-classifier_lock = threading.Lock()
+
 classifier = None
 
 
