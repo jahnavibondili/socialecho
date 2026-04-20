@@ -92,4 +92,6 @@ The app will return a JSON response with a list of categories and their scores, 
     ]
   }
 }
+
+
 ```

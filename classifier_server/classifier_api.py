@@ -108,8 +108,32 @@ def classify():
                 "statusText": str(e)
             }
         })
+@app.route('/classify', methods=['POST'])
+def classify():
+    # your existing code
+    ...
 
+
+# 👇 PASTE HERE (NEW API)
+@app.route('/predict-risk', methods=['POST'])
+def predict_risk():
+    data = request.json
+
+    location = data.get("location", "India")
+    device = data.get("device", "")
+    failed_attempts = data.get("failedAttempts", 0)
+
+    risk = "low"
+
+    if failed_attempts > 3:
+        risk = "high"
+    elif "Mobile" in device:
+        risk = "medium"
+    elif location != "India":
+        risk = "medium"
+
+    return jsonify({"risk": risk})
 
 if __name__ == '__main__':
-    initialize_classifier()
+    
     app.run(host='0.0.0.0', port=5000, debug=True)
