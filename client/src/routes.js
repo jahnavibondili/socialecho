@@ -97,14 +97,7 @@ export const publicRoutes = [
     path: "/email-verified",
     element: <EmailVerifiedMessage />,
   },
-  {
-  path: "/forgot-password",
-  element: <ForgotPassword />,
-  },
-  {
-  path: "/reset-password/:token",
-  element: <ResetPassword />,
-  },
+  
   {
     path: "/block-device",
     element: <BlockDevice />,

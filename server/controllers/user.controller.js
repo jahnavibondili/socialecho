@@ -1,7 +1,5 @@
 const bcrypt = require("bcrypt");
 const User = require("../models/user.model");
-const crypto = require("crypto");
-const nodemailer = require("nodemailer");
 const jwt = require("jsonwebtoken");
 const Token = require("../models/token.model");
 const Post = require("../models/post.model");
@@ -48,7 +46,7 @@ const signin = async (req, res, next) => {
   try {
     const { email, password } = req.body;
     const existingUser = await User.findOne({
-      email: { $eq: email },
+      email: email.toLowerCase(),
     });
     if (!existingUser) {
       await saveLogInfo(
@@ -81,87 +79,31 @@ const signin = async (req, res, next) => {
       });
     }
 
-    const isContextAuthEnabled = await UserPreference.findOne({
-      user: existingUser._id,
-      enableContextBasedAuth: true,
-    });
+    let contextDataResult = null;
 
-    if (isContextAuthEnabled) {
-      const contextDataResult = await verifyContextData(req, existingUser);
+if (isContextAuthEnabled) {
+  contextDataResult = await verifyContextData(req, existingUser);
 
-      if (contextDataResult === types.BLOCKED) {
-        await saveLogInfo(
-          req,
-          MESSAGE.DEVICE_BLOCKED,
-          LOG_TYPE.SIGN_IN,
-          LEVEL.WARN
-        );
-
-        return res.status(401).json({
-          message:
-            "You've been blocked due to suspicious login activity. Please contact support for assistance.",
-        });
-      }
-
-      if (
-        contextDataResult === types.NO_CONTEXT_DATA ||
-        contextDataResult === types.ERROR
-      ) {
-        await saveLogInfo(
-          req,
-          MESSAGE.CONTEXT_DATA_VERIFY_ERROR,
-          LOG_TYPE.SIGN_IN,
-          LEVEL.ERROR
-        );
-
-        return res.status(500).json({
-          message: "Error occurred while verifying context data",
-        });
-      }
-
-      if (contextDataResult === types.SUSPICIOUS) {
-        await saveLogInfo(
-          req,
-          MESSAGE.MULTIPLE_ATTEMPT_WITHOUT_VERIFY,
-          LOG_TYPE.SIGN_IN,
-          LEVEL.WARN
-        );
-
-        return res.status(401).json({
-          message: `You've temporarily been blocked due to suspicious login activity. We have already sent a verification email to your registered email address. 
-          Please follow the instructions in the email to verify your identity and gain access to your account.
-
-          Please note that repeated attempts to log in without verifying your identity will result in this device being permanently blocked from accessing your account.
-          
-          Thank you for your cooperation`,
-        });
-      }
-
-      if (contextDataResult.mismatchedProps) {
-        const mismatchedProps = contextDataResult.mismatchedProps;
-        const currentContextData = contextDataResult.currentContextData;
-        if (
-          mismatchedProps.some((prop) =>
-            [
-              "ip",
-              "country",
-              "city",
-              "device",
-              "deviceLOG_TYPE",
-              "os",
-              "platform",
-              "browser",
-            ].includes(prop)
-          )
-        ) {
-          req.mismatchedProps = mismatchedProps;
-          req.currentContextData = currentContextData;
-          req.user = existingUser;
-          return next();
-        }
-      }
+  if (contextDataResult && typeof contextDataResult === "object") {
+    if (contextDataResult.action === "STEP_UP_AUTH") {
+      return res.status(401).json({
+        message:
+          contextDataResult.warningMessage ||
+          "High risk login detected. Verification required.",
+        requireVerification: true,
+      });
     }
 
+    if (contextDataResult.action === "OTP_REQUIRED") {
+      return res.status(401).json({
+        message:
+          contextDataResult.warningMessage ||
+          "OTP verification required.",
+        requireOTP: true,
+      });
+    }
+  }
+}
     const payload = {
       id: existingUser._id,
       email: existingUser.email,
@@ -285,43 +227,49 @@ const getUser = async (req, res, next) => {
  * @param {Function} next - The next middleware function to call if consent is given by the user to enable context based auth.
  */
 const addUser = async (req, res, next) => {
-  let newUser;
-  const hashedPassword = await bcrypt.hash(req.body.password, 10);
-  /**
-   * @type {boolean} isConsentGiven
-   */
-  const isConsentGiven = JSON.parse(req.body.isConsentGiven);
-
-  const defaultAvatar =
-    "https://raw.githubusercontent.com/nz-m/public-files/main/dp.jpg";
-  const fileUrl = req.files?.[0]?.filename
-    ? `${req.protocol}://${req.get("host")}/assets/userAvatars/${
-        req.files[0].filename
-      }`
-    : defaultAvatar;
-
-  const emailDomain = req.body.email.split("@")[1];
-  const role = emailDomain === "mod.socialecho.com" ? "moderator" : "general";
-
-  newUser = new User({
-    name: req.body.name,
-    email: req.body.email,
-    password: hashedPassword,
-    role: role,
-    avatar: fileUrl,
-  });
-
   try {
-    await newUser.save();
-    if (newUser.isNew) {
-      throw new Error("Failed to add user");
+    const existingUser = await User.findOne({ email: req.body.email });
+
+    if (existingUser) {
+      return res.status(400).json({
+        message: "User already exists",
+      });
     }
 
-    req.user = newUser;
-    return next();
-    
+    const hashedPassword = await bcrypt.hash(req.body.password, 10);
+
+    const isConsentGiven = JSON.parse(req.body.isConsentGiven);
+
+    const defaultAvatar =
+      "https://raw.githubusercontent.com/nz-m/public-files/main/dp.jpg";
+
+    const fileUrl = req.files?.[0]?.filename
+      ? `${req.protocol}://${req.get("host")}/assets/userAvatars/${req.files[0].filename}`
+      : defaultAvatar;
+
+    const emailDomain = req.body.email.split("@")[1];
+    const role =
+      emailDomain === "mod.socialecho.com" ? "moderator" : "general";
+
+    const newUser = new User({
+      name: req.body.name,
+      email: req.body.email,
+      password: hashedPassword,
+      role,
+      avatar: fileUrl,
+    });
+    await newUser.save();
+  
+    if (isConsentGiven === false) {
+      return res.status(201).json({
+        message: "User added successfully",
+      });
+
+    }
+
+    next();
   } catch (err) {
-    res.status(400).json({
+    res.status(500).json({
       message: "Failed to add user",
     });
   }
@@ -347,69 +295,6 @@ const logout = async (req, res) => {
     res.status(500).json({
       message: "Internal server error. Please try again later.",
     });
-  }
-};
-
-const forgotPassword = async (req, res) => {
-  try {
-    const user = await User.findOne({ email: req.body.email });
-
-    if (!user) {
-      return res.status(404).json({ message: "User not found" });
-    }
-
-    const token = crypto.randomBytes(32).toString("hex");
-
-    user.resetToken = token;
-    user.resetTokenExpiry = Date.now() + 3600000;
-
-    await user.save();
-
-    const transporter = nodemailer.createTransport({
-      service: "gmail",
-      auth: {
-        user: process.env.EMAIL,
-        pass: process.env.PASSWORD,
-      },
-    });
-
-    const resetLink = `${process.env.CLIENT_URL}/reset-password/${token}`;
-
-    await transporter.sendMail({
-      to: user.email,
-      subject: "Password Reset",
-      html: `<p>Click below to reset password:</p>
-             <a href="${resetLink}">${resetLink}</a>`,
-    });
-
-    res.json({ message: "Reset link sent" });
-
-  } catch (error) {
-    res.status(500).json({ message: "Error sending email" });
-  }
-};
-
-const resetPassword = async (req, res) => {
-  try {
-    const user = await User.findOne({
-      resetToken: req.params.token,
-      resetTokenExpiry: { $gt: Date.now() },
-    });
-
-    if (!user) {
-      return res.status(400).json({ message: "Invalid or expired token" });
-    }
-
-    user.password = req.body.password;
-    user.resetToken = undefined;
-    user.resetTokenExpiry = undefined;
-
-    await user.save();
-
-    res.json({ message: "Password reset successful" });
-
-  } catch (error) {
-    res.status(500).json({ message: "Error resetting password" });
   }
 };
 
@@ -524,8 +409,6 @@ module.exports = {
   addUser,
   signin,
   logout,
-  forgotPassword,
-  resetPassword,
   refreshToken,
   getModProfile,
   getUser,

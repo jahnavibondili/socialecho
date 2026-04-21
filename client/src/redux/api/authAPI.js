@@ -113,3 +113,20 @@ export const unblockContextAuthData = async (contextId) => {
     return handleApiError(error);
   }
 };
+ export const forgotPassword = (data) =>
+  fetch("/auth/forgot-password", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(data),
+  }).then((res) => res.json());
+
+export const resetPassword = (token, data) =>
+  fetch(`/auth/reset-password/${token}`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(data),
+  }).then((res) => res.json());

@@ -1,5 +1,4 @@
 
-
 require("dotenv").config();
 const express = require("express");
 const adminRoutes = require("./routes/admin.route");
@@ -10,15 +9,18 @@ const contextAuthRoutes = require("./routes/context-auth.route");
 const search = require("./controllers/search.controller");
 const Database = require("./config/database");
 const decodeToken = require("./middlewares/auth/decodeToken");
-
+const requestIp = require("request-ip");
+const useragent = require("express-useragent");
 const app = express();
-
+app.set("trust proxy", 1);
+app.use(requestIp.mw());
+app.use(useragent.express());
 const cors = require("cors");
 const morgan = require("morgan");
 const passport = require("passport");
 
 const PORT = process.env.PORT || 4000;
-
+console.log("MONGO URI:", process.env.MONGODB_URI);
 const db = new Database(process.env.MONGODB_URI, {
   useNewUrlParser: true,
   useUnifiedTopology: true,
@@ -28,7 +30,17 @@ db.connect().catch((err) =>
   console.error("Error connecting to database:", err)
 );
 
-app.use(cors());
+app.use(
+  cors({
+    origin: [
+      "http://localhost:3000",
+      "https://adaptiveauth.netlify.app"
+      
+    ],
+    credentials: true,
+  })
+);
+app.options("*", cors());
 app.use(morgan("dev"));
 app.use("/assets/userFiles", express.static(__dirname + "/assets/userFiles"));
 app.use(

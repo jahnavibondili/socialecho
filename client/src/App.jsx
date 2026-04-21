@@ -35,6 +35,14 @@ const App = () => {
           path="/signin"
           element={userData ? <Navigate to="/" /> : <SignIn />}
         />
+        <Route
+          path="/forgot-password"
+          element={<ForgotPassword />}
+        />
+        <Route
+          path="/reset-password/:token"
+          element={<ResetPassword />}
+        />
 
         <Route
           path="/admin/signin"

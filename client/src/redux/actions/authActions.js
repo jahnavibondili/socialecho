@@ -252,3 +252,37 @@ export const unblockContextAuthDataAction = (contextId) => async (dispatch) => {
     });
   }
 };
+
+export const forgotPasswordAction = (data) => async (dispatch) => {
+  try {
+    const result = await api.forgotPassword(data);
+
+    dispatch({
+      type: types.SIGNUP_SUCCESS,
+      payload: result.message,
+    });
+
+  } catch (error) {
+    dispatch({
+      type: types.SIGNIN_FAIL,
+      payload: types.ERROR_MESSAGE,
+    });
+  }
+};
+
+export const resetPasswordAction = (token, data) => async (dispatch) => {
+  try {
+    const result = await api.resetPassword(token, data);
+
+    dispatch({
+      type: types.SIGNUP_SUCCESS,
+      payload: result.message,
+    });
+
+  } catch (error) {
+    dispatch({
+      type: types.SIGNIN_FAIL,
+      payload: types.ERROR_MESSAGE,
+    });
+  }
+};

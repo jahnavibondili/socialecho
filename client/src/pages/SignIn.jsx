@@ -33,6 +33,7 @@ const SignIn = () => {
     await dispatch(signInAction(formData, navigate));
     setLoading(false);
     clearTimeout(timeout);
+    console.log("FORM SUBMITTED");
   };
 
   const signInError = useSelector((state) => state.auth?.signInError);
@@ -179,7 +180,7 @@ const SignIn = () => {
           <a
             href="https://github.com/jahnavibondili/socialecho"
             target="_blank"
-            rel="noopener noreferrer"
+            rel="noreferrer"
             className="flex items-center hover:text-blue-500"
           >
             <AiFillGithub className="mr-2 h-5 w-5" />

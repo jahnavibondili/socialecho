@@ -1,10 +1,14 @@
-const axios = require("axios");
 const UserContext = require("../models/context.model");
 const UserPreference = require("../models/preference.model");
 const SuspiciousLogin = require("../models/suspiciousLogin.model");
 const geoip = require("geoip-lite");
 const { saveLogInfo } = require("../middlewares/logger/logInfo");
 const formatCreatedAt = require("../utils/timeConverter");
+const { sendSecurityAlert } = require("../services/email.service");
+const crypto = require("crypto");
+const bcrypt = require("bcryptjs");
+const { sendPasswordResetEmail } = require("../services/email.service");
+const User = require("../models/user.model");
 
 const types = {
   NO_CONTEXT_DATA: "no_context_data",
@@ -15,7 +19,7 @@ const types = {
 };
 const getCurrentContextData = (req) => {
   const ip = req.clientIp || "unknown";
-  const location = geoip.lookup(ip) || "unknown";
+  const location = geoip.lookup(ip) || {};
   const country = location.country ? location.country.toString() : "unknown";
   const city = location.city ? location.city.toString() : "unknown";
   const browser = req.useragent.browser
@@ -41,6 +45,9 @@ const getCurrentContextData = (req) => {
     ? "Tablet"
     : "unknown";
 
+   console.log("📱 Current Device Type:", deviceType);
+   console.log("🌐 Current Browser:", browser);
+
   return {
     ip,
     country,
@@ -53,10 +60,13 @@ const getCurrentContextData = (req) => {
   };
 };
 
-const isTrustedDevice = (currentContextData, userContextData) =>
-  Object.keys(userContextData).every(
-    (key) => userContextData[key] === currentContextData[key]
+const isTrustedDevice = (current, saved) => {
+  return (
+    current.ip === saved.ip &&
+    current.deviceType === saved.deviceType &&
+    current.browser === saved.browser
   );
+};
 
 const isSuspiciousContextChanged = (oldContextData, newContextData) =>
   Object.keys(oldContextData).some(
@@ -97,7 +107,50 @@ const addNewSuspiciousLogin = async (_id, existingUser, currentContextData) => {
 
   return await newSuspiciousLogin.save();
 };
+// ===== RISK CALCULATION =====
 
+const calculateRiskScore = (trustedContext, currentContext) => {
+  let score = 0;
+  const reasons = [];
+
+  if (trustedContext.ip !== currentContext.ip) {
+    score += 30;
+    reasons.push("NEW_IP");
+  }
+
+  if (trustedContext.country !== currentContext.country) {
+    score += 40;
+    reasons.push("NEW_COUNTRY");
+  }
+
+  if (trustedContext.city !== currentContext.city) {
+    score += 10;
+    reasons.push("NEW_CITY");
+  }
+
+  if (trustedContext.browser !== currentContext.browser) {
+    score += 15;
+    reasons.push("NEW_BROWSER");
+  }
+
+  if (trustedContext.device !== currentContext.device) {
+    score += 25;
+    reasons.push("NEW_DEVICE");
+  }
+
+  if (trustedContext.deviceType !== currentContext.deviceType) {
+    score += 50;  // 🔥 increase importance
+    reasons.push("NEW_DEVICE_TYPE");
+  }
+
+  return { score, reasons };
+};
+
+const getRiskLevel = (score) => {
+  if (score < 30) return "LOW";
+  if (score < 70) return "MEDIUM";
+  return "HIGH";
+};
 const verifyContextData = async (req, existingUser) => {
   try {
     const { _id } = existingUser;
@@ -119,31 +172,50 @@ const verifyContextData = async (req, existingUser) => {
     };
 
     const currentContextData = getCurrentContextData(req);
+    const { score, reasons } = calculateRiskScore(
+      userContextData,
+      currentContextData
+    );
 
-    // ---------------- AI CLASSIFIER CALL ----------------
-    let aiRisk = "low";
+    const riskLevel = getRiskLevel(score);
 
-    try {
-     const response = await axios.post(
-       process.env.CLASSIFIER_API + "/predict-risk",
-       {
-         location: currentContextData.country,
-         device: currentContextData.deviceType,
-         failedAttempts: existingUser.failedAttempts || 0,
-       }
-     );
+    let action =
+      riskLevel === "LOW"
+      ? "ALLOW"
+      : riskLevel === "MEDIUM"
+      ? "OTP_REQUIRED"
+      : "STEP_UP_AUTH";
 
-     aiRisk = response.data.risk;
-    } catch (error) {
-      console.log("Classifier API error:", error.message);
+    let warning = false;
+    let warningMessage = null;
+
+    if (riskLevel === "MEDIUM") {
+      warning = true;
+      warningMessage = "Unusual login detected. OTP verification required.";
+    }
+
+    if (riskLevel === "HIGH") {
+       warning = true;
+       warningMessage = "High-risk login detected. Strong verification required.";
+
+      await sendSecurityAlert(
+        existingUser.email,
+        currentContextData.city + ", " + currentContextData.country,
+        currentContextData.device
+      );
     }
 
     if (isTrustedDevice(currentContextData, userContextData)) {
-      if (aiRisk === "high") {
-        return types.BLOCKED;
-      }
-       return types.MATCH;
-     }
+      return {
+        riskScore: 0,
+        riskLevel: "LOW",
+        reasons: [],
+        action: "ALLOW",
+        warning: false,
+        warningMessage: null,
+        currentContextData,
+      };
+    }
 
     const oldSuspiciousContextData = await getOldSuspiciousContextData(
       _id,
@@ -151,11 +223,38 @@ const verifyContextData = async (req, existingUser) => {
     );
 
     if (oldSuspiciousContextData) {
-      if (oldSuspiciousContextData.isBlocked) return types.BLOCKED;
-      if (oldSuspiciousContextData.isTrusted) return types.MATCH;
+      if (oldSuspiciousContextData.isBlocked) {
+        return {
+          riskScore: 90,
+          riskLevel: "HIGH",
+          reasons: ["PREVIOUSLY_FLAGGED_DEVICE"],
+          action: "STEP_UP_AUTH",
+          warning: true,
+          warningMessage: "High-risk login detected. Strong verification required.",
+          currentContextData,
+        };
+      }
+      if (oldSuspiciousContextData.isTrusted) {
+        return {
+         riskScore: 10,
+         riskLevel: "LOW",
+         reasons: ["PREVIOUSLY_VERIFIED_DEVICE"],
+         action: "ALLOW",
+         warning: false,
+         warningMessage: null,
+         currentContextData,
+        };
+      }
     }
 
-    let newSuspiciousData = {};
+    let newSuspiciousData = {
+  ip: null,
+  browser: null,
+  device: null,
+  deviceType: null,
+  country: null,
+  city: null,
+};
     if (
       oldSuspiciousContextData &&
       isSuspiciousContextChanged(oldSuspiciousContextData, currentContextData)
@@ -182,23 +281,16 @@ const verifyContextData = async (req, existingUser) => {
         suspiciousOs !== currentContextData.os
       ) {
         //  Suspicious login data found, but it doesn't match the current context data, so we add new suspicious login data
-        const res = await addNewSuspiciousLogin(
-          _id,
-          existingUser,
-          currentContextData
-        );
+        return {
+           riskScore: score,
+           riskLevel,
+           reasons: [...reasons, "REPEATED_SUSPICIOUS_LOGIN"],
+           action: "OTP_REQUIRED",
+           warning: true,
+           warningMessage: "Repeated suspicious login detected. OTP verification required.",
+           currentContextData,
+          };
 
-        newSuspiciousData = {
-          time: formatCreatedAt(res.createdAt),
-          ip: res.ip,
-          country: res.country,
-          city: res.city,
-          browser: res.browser,
-          platform: res.platform,
-          os: res.os,
-          device: res.device,
-          deviceType: res.deviceType,
-        };
       } else {
         // increase the unverifiedAttempts count by 1
         await SuspiciousLogin.findByIdAndUpdate(
@@ -210,33 +302,35 @@ const verifyContextData = async (req, existingUser) => {
         );
         //  If the unverifiedAttempts count is greater than or equal to 3, then we block the user
         if (oldSuspiciousContextData.unverifiedAttempts >= 3) {
-          await SuspiciousLogin.findByIdAndUpdate(
-            oldSuspiciousContextData._id,
-            {
-              isBlocked: true,
-              isTrusted: false,
-            },
-            { new: true }
-          );
-
-          await saveLogInfo(
-            req,
-            "Device blocked due to too many unverified login attempts",
-            "sign in",
-            "warn"
-          );
-
-          return types.BLOCKED;
+          return {
+           riskScore: score + 20,
+           riskLevel: "HIGH",
+           reasons: [...reasons, "MULTIPLE_FAILED_ATTEMPTS"],
+           action: "STEP_UP_AUTH",
+           warning: true,
+           warningMessage: "Multiple suspicious attempts detected. Strong verification required.",
+           currentContextData
+          };
         }
 
         // Suspicious login data found, and it matches the current context data, so we return "already_exists"
-        return types.SUSPICIOUS;
+        
       }
-    } else if (
-      oldSuspiciousContextData &&
-      isOldDataMatched(oldSuspiciousContextData, currentContextData)
-    ) {
-      return types.MATCH;
+      } else if (
+         oldSuspiciousContextData &&
+         isOldDataMatched(oldSuspiciousContextData, currentContextData)
+        ) {
+
+           return {
+             riskScore: 10,
+             riskLevel: "LOW",
+             reasons: ["KNOWN_SUSPICIOUS_DEVICE_NOW_TRUSTED"],
+             action: "ALLOW",
+             warning: false,
+             warningMessage: null,
+             currentContextData,
+            };
+
     } else {
       //  No previous suspicious login data found, so we create a new one
       const res = await addNewSuspiciousLogin(
@@ -279,24 +373,122 @@ const verifyContextData = async (req, existingUser) => {
     if (userContextData.city !== newSuspiciousData.city) {
       mismatchedProps.push("city");
     }
-
-    if (mismatchedProps.length > 0) {
-      return {
-        mismatchedProps: mismatchedProps,
-        currentContextData: newSuspiciousData,
-      };
-    }
-
-    if (aiRisk === "high") {
-      return types.BLOCKED;
-    }
-
-    return types.MATCH;
+    console.log("💾 Saved Device Type:", userContextData.deviceType);
+     console.log("📊 Risk Level:", riskLevel);
+     console.log("⚙️ Action:", action);
+    return {
+      riskScore: score,
+      riskLevel,
+      reasons,
+      action,
+      warning,
+      warningMessage,
+      currentContextData,
+    };
   } catch (error) {
-    return types.ERROR;
-  }
+     console.log("Context Error:", error);
+
+  
+     return {
+       riskScore: 50,
+       riskLevel: "MEDIUM",
+       reasons: ["CONTEXT_FETCH_ERROR"],
+        action: "OTP_REQUIRED",
+       warning: true,
+       warningMessage: "Unable to verify context. OTP required.",
+       currentContextData: {}
+     };
+   }
 };
 
+
+const forgotPassword = async (req, res) => {
+  try {
+
+    const user = await User.findOne({ email: req.body.email });
+
+    if (!user) {
+      return res.status(404).json({
+        message: "User not found"
+      });
+    }
+
+    // Generate token
+    const resetToken = crypto.randomBytes(20).toString("hex");
+
+    // Hash token before saving
+    const hashedToken = crypto
+      .createHash("sha256")
+      .update(resetToken)
+      .digest("hex");
+
+    user.resetPasswordToken = hashedToken;
+    user.resetPasswordExpire = Date.now() + 10 * 60 * 1000; // 10 minutes
+
+    await user.save();
+
+    // Reset URL for frontend
+    const CLIENT_URL = process.env.CLIENT_URL;
+    const resetUrl = `${CLIENT_URL}/reset-password/${resetToken}`;
+
+    console.log("Reset URL:", resetUrl);
+
+    // Send email (your existing mail code)
+    // Example:
+    // sendEmail(user.email, resetUrl)
+   sendPasswordResetEmail(user.email, resetUrl)
+    res.json({
+      message: "Password reset email sent"
+    });
+
+  } catch (error) {
+
+    res.status(500).json({
+      message: "Server error"
+    });
+
+  }
+};
+const resetPassword = async (req, res) => {
+
+  try {
+
+    const resetToken = crypto
+      .createHash("sha256")
+      .update(req.params.token)
+      .digest("hex");
+
+    const user = await User.findOne({
+      resetPasswordToken: resetToken,
+      resetPasswordExpire: { $gt: Date.now() }
+    });
+
+    if (!user) {
+      return res.status(400).json({ message: "Invalid or expired token" });
+    }
+
+    const hashedPassword = await bcrypt.hash(req.body.password, 10);
+    user.password = hashedPassword;
+    
+    user.resetPasswordToken = undefined;
+    user.resetPasswordExpire = undefined;
+
+    await user.save();
+
+    res.status(200).json({
+      message: "Password reset successful"
+    });
+
+  } catch (error) {
+     console.log("RESET ERROR:", error);
+     console.log("TOKEN:", req.params.token);
+     console.log("PASSWORD:", req.body.password);
+
+     res.status(500).json({
+       message: error.message
+     });
+    }
+};
 const addContextData = async (req, res) => {
   const userId = req.userId;
   const email = req.email;
@@ -545,5 +737,7 @@ module.exports = {
   deleteContextAuthData,
   blockContextAuthData,
   unblockContextAuthData,
+  forgotPassword,
+  resetPassword,
   types,
 };

@@ -11,8 +11,7 @@ const {
   getModProfile,
   getUser,
   updateInfo,
-  forgotPassword,
-  resetPassword,
+
 } = require("../controllers/user.controller");
 
 const {
@@ -67,8 +66,6 @@ router.post(
   sendLoginVerificationEmail
 );
 router.post("/logout", logout);
-router.post("/forgot-password", forgotPassword);
-router.post("/reset-password/:token", resetPassword);
 
 router.put("/:id", requireAuth, decodeToken, updateInfo);
 
