@@ -23,18 +23,20 @@ const verifyEmailValidation = [
 const sendVerificationEmail = async (req, res) => {
   const USER = process.env.EMAIL;
   const PASS = process.env.PASSWORD;
-  const { email, name } = req.body;
+  const { email, name } = req.user;
 
   const verificationCode = Math.floor(10000 + Math.random() * 90000);
   const verificationLink = `${CLIENT_URL}/auth/verify?code=${verificationCode}&email=${email}`;
-
+  console.log("email received:", req.body.email);
   try {
     let transporter = nodemailer.createTransport({
-      service: EMAIL_SERVICE,
-      auth: {
-        user: USER,
-        pass: PASS,
-      },
+      host: "smtp.gmail.com",
+      port: 465,
+     secure: true,
+     auth: {
+       user: process.env.EMAIL,
+       pass: process.env.PASSWORD,
+     },
     });
 
     let info = await transporter.sendMail({

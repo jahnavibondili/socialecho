@@ -8,6 +8,7 @@ import { MdOutlineAdminPanelSettings } from "react-icons/md";
 import ButtonLoadingSpinner from "../components/loader/ButtonLoadingSpinner";
 import Logo from "../assets/SocialEcho.png";
 
+
 const SignIn = () => {
   const [loading, setLoading] = useState(false);
   const [loadingText, setLoadingText] = useState("");
@@ -152,6 +153,11 @@ const SignIn = () => {
               required
               autoComplete="off"
             />
+          </div>
+          <div className="mt-2 text-right">
+             <Link to="/forgot-password" className="text-sm text-blue-500 hover:underline">
+              Forgot Password?
+            </Link>
           </div>
           <div className="mt-6">
             <button

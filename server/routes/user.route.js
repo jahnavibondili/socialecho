@@ -11,6 +11,8 @@ const {
   getModProfile,
   getUser,
   updateInfo,
+  forgotPassword,
+  resetPassword,
 } = require("../controllers/user.controller");
 
 const {

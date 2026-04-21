@@ -317,13 +317,9 @@ const addUser = async (req, res, next) => {
       throw new Error("Failed to add user");
     }
 
-    if (isConsentGiven === false) {
-      res.status(201).json({
-        message: "User added successfully",
-      });
-    } else {
-      next();
-    }
+    req.user = newUser;
+    return next();
+    
   } catch (err) {
     res.status(400).json({
       message: "Failed to add user",
