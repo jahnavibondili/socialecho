@@ -21,6 +21,9 @@ const verifyEmailValidation = [
 ];
 
 const sendVerificationEmail = async (req, res) => {
+  console.log("👉 ENV EMAIL:", process.env.EMAIL);
+  console.log("👉 PASSWORD EXISTS:", !!process.env.PASSWORD);
+  console.log("👉 SENDING TO:", req.user?.email || req.body.email);
   const USER = process.env.EMAIL;
   const PASS = process.env.PASSWORD;
   const { email, name } = req.user;
@@ -40,11 +43,14 @@ const sendVerificationEmail = async (req, res) => {
     });
 
     let info = await transporter.sendMail({
+      
       from: `"SocialEcho" <${USER}>`,
       to: email,
       subject: "Verify your email address",
       html: verifyEmailHTML(name, verificationLink, verificationCode),
+      
     });
+    console.log("✅ MESSAGE ID:", info.messageId);
 
     const newVerification = new EmailVerification({
       email,
