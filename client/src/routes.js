@@ -11,8 +11,7 @@ import AllCommunities from "./pages/AllCommunities";
 import MyCommunities from "./pages/MyCommunities";
 import Following from "./pages/Following";
 import SignUp from "./pages/SignUp";
-import ForgotPassword from "./pages/ForgotPassword";
-import ResetPassword from "./pages/ResetPassword";
+
 
 const ReportedPost = lazy(() => import("./pages/ReportedPost"));
 const Moderator = lazy(() => import("./pages/Moderator"));
