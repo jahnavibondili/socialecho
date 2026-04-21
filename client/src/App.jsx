@@ -5,7 +5,8 @@ import { useSelector } from "react-redux";
 import { Routes, Route, Navigate } from "react-router-dom";
 import FallbackLoading from "./components/loader/FallbackLoading";
 import { publicRoutes, privateRoutes } from "./routes";
-
+import ForgotPassword from "./pages/ForgotPassword";
+import ResetPassword from "./pages/ResetPassword";
 import PrivateRoute from "./PrivateRoute";
 import SignIn from "./pages/SignIn";
 
