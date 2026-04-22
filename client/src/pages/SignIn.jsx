@@ -22,9 +22,10 @@ const SignIn = () => {
     event.preventDefault();
     setLoading(true);
     setLoadingText("Signing in...");
-    const formData = new FormData();
-    formData.append("email", email);
-    formData.append("password", password);
+    const formData = {
+      email,
+      password
+    };
     const timeout = setTimeout(() => {
       setLoadingText(
         "This is taking longer than usual. Please wait while backend services are getting started."

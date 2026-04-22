@@ -84,7 +84,7 @@ const signin = async (req, res, next) => {
       enableContextBasedAuth: true,
     });
 
-    if (isContextAuthEnabled) {
+    if (false) {
       const contextDataResult = await verifyContextData(req, existingUser);
 
       if (contextDataResult === types.BLOCKED) {
@@ -322,7 +322,7 @@ const addUser = async (req, res, next) => {
     } else {
       next();
     }
-    
+
   } catch (err) {
     res.status(400).json({
       message: "Failed to add user",
