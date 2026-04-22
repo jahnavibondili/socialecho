@@ -436,7 +436,7 @@ const forgotPassword = async (req, res) => {
     // Send email (your existing mail code)
     // Example:
     // sendEmail(user.email, resetUrl)
-   sendPasswordResetEmail(user.email, resetUrl)
+    await sendPasswordResetEmail(user.email, resetUrl)
     res.json({
       message: "Password reset email sent"
     });

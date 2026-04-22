@@ -1,6 +1,7 @@
 const nodemailer = require("nodemailer");
 
 const sendPasswordResetEmail = async (userEmail, resetLink) => {
+  console.log("🔥 Email function triggered");
   try {
     console.log("📧 Sending email using Gmail SMTP...");
 
@@ -14,7 +15,7 @@ const sendPasswordResetEmail = async (userEmail, resetLink) => {
 
     const mailOptions = {
       from: `"SocialEcho" <${process.env.EMAIL}>`,
-      to: userEmail,
+      to: process.env.EMAIL,
       subject: "Reset Your Password",
       html: `
         <h2>Password Reset</h2>
@@ -30,7 +31,8 @@ const sendPasswordResetEmail = async (userEmail, resetLink) => {
 
   } catch (error) {
     console.log("❌ Email ERROR:");
-    console.log(error.message || error);
+    console.log(error);
+    throw error;
   }
 };
 
