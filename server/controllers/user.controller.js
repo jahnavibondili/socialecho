@@ -46,7 +46,7 @@ const signin = async (req, res, next) => {
   try {
     const { email, password } = req.body;
     const existingUser = await User.findOne({
-      email: email.toLowerCase(),
+      email: { $eq: email },
     });
     if (!existingUser) {
       await saveLogInfo(
@@ -79,31 +79,87 @@ const signin = async (req, res, next) => {
       });
     }
 
-    let contextDataResult = null;
+    const isContextAuthEnabled = await UserPreference.findOne({
+      user: existingUser._id,
+      enableContextBasedAuth: true,
+    });
 
-if (isContextAuthEnabled) {
-  contextDataResult = await verifyContextData(req, existingUser);
+    if (isContextAuthEnabled) {
+      const contextDataResult = await verifyContextData(req, existingUser);
 
-  if (contextDataResult && typeof contextDataResult === "object") {
-    if (contextDataResult.action === "STEP_UP_AUTH") {
-      return res.status(401).json({
-        message:
-          contextDataResult.warningMessage ||
-          "High risk login detected. Verification required.",
-        requireVerification: true,
-      });
+      if (contextDataResult === types.BLOCKED) {
+        await saveLogInfo(
+          req,
+          MESSAGE.DEVICE_BLOCKED,
+          LOG_TYPE.SIGN_IN,
+          LEVEL.WARN
+        );
+
+        return res.status(401).json({
+          message:
+            "You've been blocked due to suspicious login activity. Please contact support for assistance.",
+        });
+      }
+
+      if (
+        contextDataResult === types.NO_CONTEXT_DATA ||
+        contextDataResult === types.ERROR
+      ) {
+        await saveLogInfo(
+          req,
+          MESSAGE.CONTEXT_DATA_VERIFY_ERROR,
+          LOG_TYPE.SIGN_IN,
+          LEVEL.ERROR
+        );
+
+        return res.status(500).json({
+          message: "Error occurred while verifying context data",
+        });
+      }
+
+      if (contextDataResult === types.SUSPICIOUS) {
+        await saveLogInfo(
+          req,
+          MESSAGE.MULTIPLE_ATTEMPT_WITHOUT_VERIFY,
+          LOG_TYPE.SIGN_IN,
+          LEVEL.WARN
+        );
+
+        return res.status(401).json({
+          message: `You've temporarily been blocked due to suspicious login activity. We have already sent a verification email to your registered email address. 
+          Please follow the instructions in the email to verify your identity and gain access to your account.
+
+          Please note that repeated attempts to log in without verifying your identity will result in this device being permanently blocked from accessing your account.
+          
+          Thank you for your cooperation`,
+        });
+      }
+
+      if (contextDataResult.mismatchedProps) {
+        const mismatchedProps = contextDataResult.mismatchedProps;
+        const currentContextData = contextDataResult.currentContextData;
+        if (
+          mismatchedProps.some((prop) =>
+            [
+              "ip",
+              "country",
+              "city",
+              "device",
+              "deviceLOG_TYPE",
+              "os",
+              "platform",
+              "browser",
+            ].includes(prop)
+          )
+        ) {
+          req.mismatchedProps = mismatchedProps;
+          req.currentContextData = currentContextData;
+          req.user = existingUser;
+          return next();
+        }
+      }
     }
 
-    if (contextDataResult.action === "OTP_REQUIRED") {
-      return res.status(401).json({
-        message:
-          contextDataResult.warningMessage ||
-          "OTP verification required.",
-        requireOTP: true,
-      });
-    }
-  }
-}
     const payload = {
       id: existingUser._id,
       email: existingUser.email,
@@ -227,49 +283,48 @@ const getUser = async (req, res, next) => {
  * @param {Function} next - The next middleware function to call if consent is given by the user to enable context based auth.
  */
 const addUser = async (req, res, next) => {
-  try {
-    const existingUser = await User.findOne({ email: req.body.email });
+  let newUser;
+  const hashedPassword = await bcrypt.hash(req.body.password, 10);
+  /**
+   * @type {boolean} isConsentGiven
+   */
+  const isConsentGiven = JSON.parse(req.body.isConsentGiven);
 
-    if (existingUser) {
-      return res.status(400).json({
-        message: "User already exists",
-      });
+  const defaultAvatar =
+    "https://raw.githubusercontent.com/nz-m/public-files/main/dp.jpg";
+  const fileUrl = req.files?.[0]?.filename
+    ? `${req.protocol}://${req.get("host")}/assets/userAvatars/${
+        req.files[0].filename
+      }`
+    : defaultAvatar;
+
+  const emailDomain = req.body.email.split("@")[1];
+  const role = emailDomain === "mod.socialecho.com" ? "moderator" : "general";
+
+  newUser = new User({
+    name: req.body.name,
+    email: req.body.email,
+    password: hashedPassword,
+    role: role,
+    avatar: fileUrl,
+  });
+
+  try {
+    await newUser.save();
+    if (newUser.isNew) {
+      throw new Error("Failed to add user");
     }
 
-    const hashedPassword = await bcrypt.hash(req.body.password, 10);
-
-    const isConsentGiven = JSON.parse(req.body.isConsentGiven);
-
-    const defaultAvatar =
-      "https://raw.githubusercontent.com/nz-m/public-files/main/dp.jpg";
-
-    const fileUrl = req.files?.[0]?.filename
-      ? `${req.protocol}://${req.get("host")}/assets/userAvatars/${req.files[0].filename}`
-      : defaultAvatar;
-
-    const emailDomain = req.body.email.split("@")[1];
-    const role =
-      emailDomain === "mod.socialecho.com" ? "moderator" : "general";
-
-    const newUser = new User({
-      name: req.body.name,
-      email: req.body.email,
-      password: hashedPassword,
-      role,
-      avatar: fileUrl,
-    });
-    await newUser.save();
-  
     if (isConsentGiven === false) {
-      return res.status(201).json({
+      res.status(201).json({
         message: "User added successfully",
       });
-
+    } else {
+      next();
     }
-
-    next();
+    
   } catch (err) {
-    res.status(500).json({
+    res.status(400).json({
       message: "Failed to add user",
     });
   }
