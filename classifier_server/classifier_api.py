@@ -1,5 +1,6 @@
 from flask import Flask, request, jsonify
-
+from transformers import pipeline
+import threading
 app = Flask(__name__)
 
 CANDIDATE_LABELS = [
@@ -25,6 +26,7 @@ CANDIDATE_LABELS = [
 
 
 classifier = None
+classifier_lock = threading.Lock()
 
 
 def initialize_classifier():

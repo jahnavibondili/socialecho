@@ -1,6 +1,7 @@
 const { google } = require("googleapis");
 const { saveLogInfo } = require("../middlewares/logger/logInfo");
 const Config = require("../models/config.model");
+const axios = require("axios");
 
 const analyzeTextWithPerspectiveAPI = async (
   content,
@@ -62,40 +63,46 @@ const analyzeTextWithPerspectiveAPI = async (
 };
 
 const analyzeContent = async (req, res, next) => {
-  const timeout = 5000; // 5 seconds
-  const API_KEY = process.env.PERSPECTIVE_API_KEY;
-  const DISCOVERY_URL = process.env.PERSPECTIVE_API_DISCOVERY_URL;
-
-  let usePerspectiveAPI;
-  try {
-    const config = await Config.findOne({}, { _id: 0, __v: 0 });
-    usePerspectiveAPI = config.usePerspectiveAPI;
-  } catch (error) {
-    usePerspectiveAPI = false;
-  }
-
-  if (!usePerspectiveAPI || !API_KEY || !DISCOVERY_URL) {
-    return next();
-  }
-
   try {
     const { content } = req.body;
-    const summaryScores = await analyzeTextWithPerspectiveAPI(
-      content,
-      API_KEY,
-      DISCOVERY_URL,
-      timeout
+
+    // 🔹 1. Call your classifier API
+    const classifierResponse = await axios.post(
+      "https://classifier-api-s1ju.onrender.com/classify",
+      { text: content }
     );
 
-    if (Object.keys(summaryScores).length > 0) {
-      const type = "inappropriateContent";
-      return res.status(403).json({ type });
-    } else {
-      next();
+    const categories = classifierResponse.data.response.categories;
+
+    // Example: block if low confidence or something weird
+    if (!categories || categories.length === 0) {
+      return res.status(500).json({ message: "Classification failed" });
     }
+
+    // 🔹 2. OPTIONAL: Risk-based logic
+    const riskResponse = await axios.post(
+      "https://classifier-api-s1ju.onrender.com/predict-risk",
+      {
+        location: req.ip || "India",
+        device: req.headers["user-agent"] || "",
+        failedAttempts: 0,
+      }
+    );
+
+    const risk = riskResponse.data.risk;
+
+    if (risk === "high") {
+      return res.status(403).json({
+        message: "High risk activity detected",
+      });
+    }
+
+    // 🔹 3. Continue flow
+    next();
   } catch (error) {
-    const errorMessage = `Error processing Perspective API response: ${error.message}`;
-    await saveLogInfo(null, errorMessage, "Perspective API", "error");
+    console.error("Classifier Error:", error.message);
+
+    // IMPORTANT: don't break post creation
     next();
   }
 };
